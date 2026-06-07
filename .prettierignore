@@ -1,0 +1,44 @@
+# Dependencies
+node_modules
+
+# Environment Files
+.env
+.env.*
+
+# Build Output
+dist
+build
+coverage
+
+# Logs
+logs
+*.log
+
+# Runtime Files
+*.pid
+*.seed
+*.pid.lock
+
+# Package Managers
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Uploaded Files
+uploads
+public/uploads
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Generated Files
+*.min.js

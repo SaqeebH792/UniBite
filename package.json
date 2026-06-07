@@ -1,0 +1,32 @@
+{
+  "name": "unibite",
+  "version": "1.0.0",
+  "description": "University Canteen Management System",
+  "keywords": [
+    "Nodejs",
+    "Mongoose",
+    "Expressjs"
+  ],
+  "license": "ISC",
+  "author": "Saqeeb",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "csv-parser": "^3.2.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.6.3",
+    "multer": "^2.1.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14",
+    "prettier": "^3.8.3"
+  }
+}
