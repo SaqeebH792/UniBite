@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
+import { authPlugin } from "../utils/authPlugin.js";
 
 const studentSchema = new mongoose.Schema(
   {
@@ -55,17 +56,7 @@ studentSchema.index(
   }
 );
 
-studentSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  this.password = await bcrypt.hash(this.password, 10);
-  return;
-});
-// Compare Password
-studentSchema.methods.isPasswordCorrect = async function (password) {
-  return await bcrypt.compare(password, this.password);
-};
-// Generate Access Token
+studentSchema.plugin(authPlugin, { tokenFields: ["registraionNo", "email"] });
 
-// Generate Refresh Token
 export const Student = mongoose.model("Student", studentSchema);
 export const UploadedStudent = mongoose.model("UploadedStudent", studentSchema);

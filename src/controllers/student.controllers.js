@@ -5,12 +5,14 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import fs from "fs";
 import csv from "csv-parser";
 import { Readable } from "stream";
+import { generateAccessAndRefreshToken } from "../utils/generateAccessAndRefreshToken.js";
+import { Product } from "../models/product.model.js";
+import { Order } from "../models/order.model.js";
 
 const uploadStudents = asyncHandler(async (req, res) => {
   if (!req.file) {
     throw new apiError(400, "File is Required");
   }
-  console.log(req.user);
   const students = [];
 
   const dataStream = Readable.from(req.file.buffer);
@@ -29,7 +31,7 @@ const uploadStudents = asyncHandler(async (req, res) => {
           email: row.email.trim(),
           cnic: row.cnic.trim(),
           session: row.session,
-          universityId: req.user._id,
+          universityId: req.user.universityId,
         });
       })
       .on("end", resolve)
@@ -40,7 +42,6 @@ const uploadStudents = asyncHandler(async (req, res) => {
     throw new apiError(400, "CSV File is Empty");
   }
 
-  console.log("students: ", students);
   const existingStudents = await Student.find({
     universityId: req.user.universityId,
     registrationNo: {
@@ -86,7 +87,6 @@ const registerStudent = asyncHandler(async (req, res, next) => {
     throw new apiError("Invalid Registration No");
   }
   const session = studentRecord.session;
-  console.log(typeof session);
   const endYear = "20" + session.split("-")[1];
 
   const currentYear = new Date().getFullYear();
@@ -95,8 +95,6 @@ const registerStudent = asyncHandler(async (req, res, next) => {
     throw new apiError(400, "Cannot Create Account! Session End");
   }
   const status = await studentRecord.isActive;
-  console.log(studentRecord);
-  console.log(status);
   if (status !== true) {
     throw new apiError(400, "Cannot Create Account! Session Expired");
   }
@@ -116,4 +114,249 @@ const registerStudent = asyncHandler(async (req, res, next) => {
 
   res.status(201).json(new apiResponse(201, createdStudet, "Registration Successful"));
 });
-export { uploadStudents, registerStudent };
+
+// ----------------------------- Login Student Controller -----------------------------------------
+
+const loginStudent = asyncHandler(async (req, res, next) => {
+  const { registrationNo, cnic, password } = req.body;
+  if ((!registrationNo && !cnic) || (registrationNo && cnic)) {
+    throw new apiError(400, "Please provide either registration number or CNIC, not both");
+  }
+  if (!password) {
+    throw new apiError(400, "All Fields are Required");
+  }
+  // Check if user is Registered or Not
+  const studentRecord = await Student.findOne({
+    $or: [{ registrationNo }, { cnic }],
+  });
+  if (!studentRecord) {
+    throw new apiError(400, "Invlid Credentials");
+  }
+  // if Student Exists Validate the Password
+  const isPasswordValid = await studentRecord.isPasswordCorrect(password);
+  if (!isPasswordValid) {
+    throw new apiError(400, "Invalid Credentials");
+  }
+
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    Student,
+    studentRecord._id
+  );
+
+  const loggedInStudent = await Student.findById(studentRecord._id).select(
+    "-password -refreshToken"
+  );
+
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new apiResponse(200, { user: loggedInStudent, accessToken, refreshToken }, "Login Successful")
+    );
+});
+
+// Get Food Items from Database
+
+const getProducts = asyncHandler(async (req, res) => {
+  const { search, category } = req.query;
+
+  const filter = {
+    universityId: req.user.universityId,
+    isAvailable: true,
+  };
+
+  // Filter by category
+  if (category) {
+    filter.category = category;
+  }
+
+  // Search by name
+  if (search) {
+    filter.name = {
+      $regex: search,
+      $options: "i",
+    };
+  }
+
+  const products = await Product.find(filter).sort({
+    createdAt: -1,
+  });
+
+  return res.status(200).json(new apiResponse(200, products, "Products Fetched Successfully"));
+});
+
+
+// ----------------------------- Students Order Food ----------------------------------------
+const orderFood = asyncHandler(async (req, res) => {
+  const { items } = req.body;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new apiError(400, "Items are Required");
+  }
+
+  const prepTimeMap = {
+    "Fast Food": 6,
+    "Drinks": 2,
+    "fries":2,
+    "Snacks": 2,
+    "Desserts": 5,
+  };
+
+  let orderItems = [];
+  let totalAmount = 0;
+  let currentOrderTime = 0;
+
+  // Check Items selected by Student for order
+  for (const item of items) {
+    if (!item.productId || !item.quantity) {
+      throw new apiError(400, "Invalid Item Data");
+    }
+
+    const product = await Product.findById(item.productId);
+
+    if (!product) {
+      throw new apiError(404, "Product not found");
+    }
+
+    if (!product.isAvailable) {
+      throw new apiError(400, `${product.name} is Not Available`);
+    }
+
+    // Let user Select Fast Food -> product.category gives Fast Food, -> prepTimeMap gives prepTimeMap(Fast Food)
+    // How much time item Fast Food Takes
+    const itemTime = (prepTimeMap[product.category] || 5) * item.quantity;
+    currentOrderTime += itemTime;
+
+    orderItems.push({
+      productId: product._id,
+      name: product.name,
+      category: product.category,
+      price: product.price,
+      quantity: item.quantity,
+    });
+
+    totalAmount += product.price * item.quantity;
+  }
+
+  // Get all Pending orders
+  const pendingOrders = await Order.find({
+    universityId: req.user.universityId,
+    status: "Pending",
+  });
+
+  let queueWorkload = 0;
+
+  for (const order of pendingOrders) {
+    for (const item of order.items) {
+      const itemPrep = prepTimeMap[item.category] || 5; // Same like above explanation
+      queueWorkload += itemPrep * item.quantity;
+    }
+  }
+
+  // Estimated Time
+  const estimatedTime = Math.ceil((queueWorkload + currentOrderTime) / 2);
+
+  const order = await Order.create({
+    studentId: req.user._id,
+    universityId: req.user.universityId,
+    items: orderItems,
+    totalAmount,
+    estimatedTime,
+    status: "Pending",
+  });
+  console.log(order)
+
+  return res.status(200).json(new apiResponse(200, order, "Order Created Successfully"));
+});
+export { uploadStudents, registerStudent, loginStudent, getProducts, orderFood };
+/*
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*/
+// const { items } = req.body;
+//   if (!items || items.length === 0) {
+//     throw new apiError(400, "Order Items are Required");
+//   }
+
+//   let totalAmount = 0;
+//   const orderItems = [];
+
+//   for (const item of items) {
+//     const product = await Product.findById(item.productId);
+//     if (!product) {
+//       throw new apiError(400, "Product not Found");
+//     }
+//     if (!product.isAvailable) {
+//       throw new apiError(400, `${product.name} is Not Available`);
+//     }
+//     orderItems.push({
+//       productId: product._id,
+//       quantity: item.quantity,
+//       price: item.price,
+//       name: item.name,
+//       category: item.category,
+//     });
+//     totalAmount += item.price * item.quantity;
+//   }
+
+//   const order = Order.create({
+//     universityId: req.user.universityId,
+//     studentId: req.user._id,
+//     items: orderItems,
+//     amount: totalAmount,
+//   });

@@ -4,28 +4,13 @@ import { apiResponse } from "../utils/apiResponse.js";
 import { CanteenAdmin, UniversityAdmin } from "../models/user.model.js";
 import { Otp } from "../models/otp.model.js";
 import { University } from "../models/university.model.js";
-
-// Generate Access and Refresh Token
-const generateAccessAndRefreshToken = async function (userId) {
-  try {
-    const user = await UniversityAdmin.findById(userId);
-    const accessToken = user.generateAccessToken();
-    const refreshToken = user.generateRefreshToken();
-    user.refresToken = refreshToken;
-
-    await user.save({ validateBeforeSave: false });
-
-    return { accessToken, refreshToken };
-  } catch (error) {
-    console.log(error);
-    throw new apiError(500, "Something went wrong");
-  }
-};
+import { generateAccessAndRefreshToken } from "../utils/generateAccessAndRefreshToken.js";
 
 const sendOtp = async function (code, email) {
   console.log(`OTP ${code} sent to email ${email}`);
 };
 
+// OTP Request to Register Account
 const requestOtp = asyncHandler(async (req, res, next) => {
   const { domain, email, name } = req.body;
 
@@ -127,7 +112,10 @@ const loginUniAdmin = asyncHandler(async (req, res, next) => {
     throw new apiError(400, "Invalid Credentials");
   }
 
-  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(registeredUniAdmin._id);
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    UniversityAdmin,
+    registeredUniAdmin._id
+  );
   const loggedInUser = await UniversityAdmin.findById(registeredUniAdmin._id).select(
     "-password -refreshToken"
   );
@@ -163,6 +151,7 @@ const registerCanteenAdmin = asyncHandler(async (req, res, next) => {
     email,
     password,
     role: "Canteen Admin",
+    // university: req.user.name, // Save The University Name
     universityId: req.user.universityId,
   });
 
