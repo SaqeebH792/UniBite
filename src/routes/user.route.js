@@ -24,12 +24,13 @@ import {
 import { CanteenAdmin, UniversityAdmin } from "../models/user.model.js";
 import { logoutUser } from "../controllers/logout.controllers.js";
 import { Student } from "../models/student.model.js";
+import { apiLimiter } from "../middlewares/rateLimiter.middleware.js";
 
 const router = Router();
 // University Admin
 router.route("/admin/register").post(requestOtp);
 router.route("/admin/verify").post(registerUniAdmin);
-router.route("/admin/login").post(loginUniAdmin);
+router.route("/admin/login").post(apiLimiter, loginUniAdmin);
 
 // Secured Routes
 // University Admin Upload Canteen Admin Credentials
@@ -48,10 +49,10 @@ router
   );
 // Student Registration & Login
 router.route("/student/register").post(registerStudent);
-router.route("/student/login").post(loginStudent);
+router.route("/student/login").post(apiLimiter, loginStudent);
 
 // Canteen Admin
-router.route("/canteenAdmin/login").post(loginCanteenAdmin);
+router.route("/canteenAdmin/login").post(apiLimiter, loginCanteenAdmin);
 router
   .route("/canteenAdmin/upload/product")
   .post(verifyJWT(CanteenAdmin), uploadImage.single("image"), listProduct);
@@ -63,7 +64,7 @@ router.route("/canteenAdmin/logout").post(verifyJWT(CanteenAdmin), logoutUser(Ca
 
 // Food Fetch and Order
 router.route("/products").post(verifyJWT(Student), getProducts);
-router.route("/order").post(verifyJWT(Student), orderFood);
+router.route("/order").post(apiLimiter, verifyJWT(Student), orderFood);
 
 // Canteen Admin Fetche all Orders
 router.route("/getOrders").post(verifyJWT(CanteenAdmin), getOrders);

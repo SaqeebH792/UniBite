@@ -48,6 +48,19 @@ const orderSchema = new mongoose.Schema(
       enum: ["Pending", "Accepted", "Preparing", "Ready", "Delivered"],
       default: "Pending",
     },
+    pickupToken: {
+      type: String,
+    },
+    qrCodeUrl: {
+      type: String,
+    },
+    pickedUpAt: {
+      type: Date,
+    },
+    qrUsed: {
+      type: Boolean,
+      default: false,
+    },
     queuePosition: {
       type: Number,
       default: 0,

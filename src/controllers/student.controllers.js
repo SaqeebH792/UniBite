@@ -8,6 +8,7 @@ import { Readable } from "stream";
 import { generateAccessAndRefreshToken } from "../utils/generateAccessAndRefreshToken.js";
 import { Product } from "../models/product.model.js";
 import { Order } from "../models/order.model.js";
+import { getSocketIO } from "../socket.js";
 
 const uploadStudents = asyncHandler(async (req, res) => {
   if (!req.file) {
@@ -191,7 +192,6 @@ const getProducts = asyncHandler(async (req, res) => {
   return res.status(200).json(new apiResponse(200, products, "Products Fetched Successfully"));
 });
 
-
 // ----------------------------- Students Order Food ----------------------------------------
 const orderFood = asyncHandler(async (req, res) => {
   const { items } = req.body;
@@ -202,10 +202,10 @@ const orderFood = asyncHandler(async (req, res) => {
 
   const prepTimeMap = {
     "Fast Food": 6,
-    "Drinks": 2,
-    "fries":2,
-    "Snacks": 2,
-    "Desserts": 5,
+    Drinks: 2,
+    fries: 2,
+    Snacks: 2,
+    Desserts: 5,
   };
 
   let orderItems = [];
@@ -270,11 +270,51 @@ const orderFood = asyncHandler(async (req, res) => {
     estimatedTime,
     status: "Pending",
   });
-  console.log(order)
+
+  const io = getSocketIO();
+
+  io.emit("newOrder", {
+    orderId: order._id,
+    student: req.user.name,
+    totalAmount: order.totalAmount,
+    status: order.status,
+    createdAt: order.createdAt,
+  });
 
   return res.status(200).json(new apiResponse(200, order, "Order Created Successfully"));
 });
-export { uploadStudents, registerStudent, loginStudent, getProducts, orderFood };
+
+// Order Cancellation if in Pending or Accepted State
+const cancelOrder = asyncHandler(async (req, res) => {
+  const { orderId } = req.params;
+
+  const order = await Order.findById(orderId);
+
+  if (!order) {
+    throw new apiError(404, "Order not found");
+  }
+
+  if (order.studentId.toString() !== req.user._id.toString()) {
+    throw new apiError(403, "Not allowed");
+  }
+
+  if (!["Pending", "Accepted"].includes(order.status)) {
+    throw new apiError(400, "Order cannot be cancelled at this stage");
+  }
+
+  order.status = "Cancelled";
+  await order.save();
+
+  const io = getSocketIO();
+
+  io.to(order.studentId.toString()).emit("orderStatusUpdated", {
+    orderId: order._id,
+    status: "Cancelled",
+  });
+
+  return res.status(200).json(new apiResponse(200, order, "Order cancelled successfully"));
+});
+export { uploadStudents, registerStudent, loginStudent, getProducts, orderFood, cancelOrder };
 /*
 
 
